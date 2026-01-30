@@ -14,6 +14,7 @@ Requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN for pyannote models.
 
 import argparse
 import shutil
+import subprocess
 import sys
 import warnings
 from pathlib import Path
@@ -52,9 +53,15 @@ def run_pipeline(
     max_speakers: int | None = None,
     pipeline_id: str = "pyannote/speaker-diarization-community-1",
     pipeline_params: dict | None = None,
+    transcribe_with_vexa: bool = True,
+    vexa_dir: str | Path = "/home/ubuntu/vexa",
 ) -> dict[str, tuple[str, float]]:
     """
     Run the full pipeline and return best sample match per speaker.
+
+    If transcribe_with_vexa is True and vexa_dir is set, runs
+    ``make transcribe-local FOLDER=<output_dir> OUTPUT=<work_dir>/transcript.txt``
+    from vexa_dir as a final step (output_dir = work_dir/output with speaker-named WAVs).
 
     Returns
     -------
@@ -190,6 +197,23 @@ def run_pipeline(
         print("=" * 60)
         _rename_ordered_with_speaker_names(ordered_dir, results, meeting_embeddings)
 
+    # --- 8: Optional Vexa transcription of output folder ---
+    if transcribe_with_vexa and vexa_dir is not None:
+        vexa_path = Path(vexa_dir)
+        if not vexa_path.is_dir():
+            raise NotADirectoryError(f"vexa_dir not found: {vexa_path}")
+        transcript_path = work_dir / "transcript.txt"
+        print("\n" + "=" * 60)
+        print("Step 8: Transcribe output folder (make transcribe-local)")
+        print("=" * 60)
+        print(f"  FOLDER={ordered_dir}  OUTPUT={transcript_path}")
+        subprocess.run(
+            ["make", "transcribe-local", f"FOLDER={ordered_dir}", f"OUTPUT={transcript_path}"],
+            cwd=vexa_path,
+            check=True,
+        )
+        print(f"  Transcript written to: {transcript_path}")
+
     return results
 
 
@@ -307,7 +331,22 @@ def main():
         metavar="FLOAT",
         help="Diarization: VBx clustering threshold",
     )
+    parser.add_argument(
+        "--transcribe",
+        action="store_true",
+        default=True,
+        help="Run Vexa transcription on output folder (requires --vexa-dir)",
+    )
+    parser.add_argument(
+        "--vexa-dir",
+        type=Path,
+        default="/home/ubuntu/vexa",
+        help="Path to Vexa repo for make transcribe-local (required if --transcribe)",
+    )
     args = parser.parse_args()
+
+    if args.transcribe and args.vexa_dir is None:
+        parser.error("--transcribe requires --vexa-dir")
 
     pipeline_params = None
     if args.min_duration_off is not None or args.clustering_threshold is not None:
@@ -328,6 +367,8 @@ def main():
             max_speakers=args.max_speakers,
             pipeline_id=args.pipeline,
             pipeline_params=pipeline_params,
+            transcribe_with_vexa=args.transcribe,
+            vexa_dir=args.vexa_dir,
         )
     except Exception as e:
         print(f"Pipeline failed: {e}", file=sys.stderr)
