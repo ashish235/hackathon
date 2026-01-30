@@ -14,10 +14,12 @@ Two outputs:
 import argparse
 from pathlib import Path
 
-import torchaudio
-from pyannote.audio import Audio
+import torch
+import torch.nn.functional as F
 from pyannote.core import Segment
 from pyannote.database.util import load_rttm
+
+from audio_io import load_audio, save_audio
 
 
 def split_audio_by_rttm(
@@ -63,16 +65,21 @@ def split_audio_by_rttm(
             )
     annotation = annotations[uri]
 
-    audio = Audio(mono="downmix")
+    # Load full audio with TorchCodec (recommended; avoids deprecated torchaudio path)
+    waveform, sample_rate = load_audio(audio_path)
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    num_samples = waveform.shape[1]
+
     output_dir.mkdir(parents=True, exist_ok=True)
     ordered_dir = Path(ordered_output_dir) if ordered_output_dir is not None else output_dir / "ordered"
     ordered_dir.mkdir(parents=True, exist_ok=True)
 
     # Chronological order: sort segments by start time
-    segments_with_speaker = [
-        (segment, speaker)
-        for segment, _, speaker in annotation.itertracks(yield_label=True)
-    ]
+    segments_with_speaker = []
+    for item in annotation.itertracks(yield_label=True):
+        segment, speaker = item[0], item[2] if len(item) >= 3 else item[1]
+        segments_with_speaker.append((segment, speaker))
     segments_with_speaker.sort(key=lambda x: x[0].start)
 
     # Merge consecutive segments of the same speaker into one (avoids very small chunks)
@@ -91,17 +98,27 @@ def split_audio_by_rttm(
         speaker_count[speaker] = speaker_count.get(speaker, 0) + 1
         idx = speaker_count[speaker]
 
+        # Crop segment (zero-pad if out of bounds)
+        start_s, end_s = float(segment.start), float(segment.end)
+        start_sample = int(start_s * sample_rate)
+        end_sample = int(end_s * sample_rate)
+        pad_start = max(0, -start_sample)
+        pad_end = max(0, end_sample - num_samples)
+        start_sample = max(0, start_sample)
+        end_sample = min(num_samples, end_sample)
+        chunk = waveform[:, start_sample:end_sample]
+        if pad_start > 0 or pad_end > 0:
+            chunk = F.pad(chunk, (pad_start, pad_end))
+
         # Per-speaker folder: SPEAKER_00/001.wav, ...
         speaker_dir = output_dir / speaker
         speaker_dir.mkdir(parents=True, exist_ok=True)
         out_path = speaker_dir / f"{idx:03d}.wav"
-
-        waveform, sample_rate = audio.crop(audio_path, segment, mode="pad")
-        torchaudio.save(str(out_path), waveform, sample_rate)
+        save_audio(out_path, chunk, sample_rate)
 
         # Ordered folder: 0_SPEAKER_00.wav, 1_SPEAKER_02.wav, ...
         ordered_path = ordered_dir / f"{global_index}_{speaker}.wav"
-        torchaudio.save(str(ordered_path), waveform, sample_rate)
+        save_audio(ordered_path, chunk, sample_rate)
 
         print(
             f"  {segment.start:.2f}s - {segment.end:.2f}s  {speaker}  ->  {out_path}  |  {ordered_path.name}"

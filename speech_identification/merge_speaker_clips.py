@@ -8,7 +8,9 @@ import argparse
 from pathlib import Path
 
 import torch
-import torchaudio
+import torchaudio.functional
+
+from audio_io import load_audio, save_audio
 
 
 def merge_speaker_clips(
@@ -50,17 +52,18 @@ def merge_speaker_clips(
         sample_rate = None
 
         for path in clip_paths:
-            wav, sr = torchaudio.load(str(path))
+            wav, sr = load_audio(path)
             if sample_rate is None:
                 sample_rate = sr
             elif sr != sample_rate:
-                # Resample to match first file
                 wav = torchaudio.functional.resample(wav, sr, sample_rate)
             waveforms.append(wav)
 
+        if sample_rate is None:
+            raise ValueError(f"No audio clips loaded in {speaker_dir}")
         merged = torch.cat(waveforms, dim=-1)  # (channels, time)
         out_path = output_dir / f"{speaker_name}{output_suffix}.wav"
-        torchaudio.save(str(out_path), merged, sample_rate)
+        save_audio(out_path, merged, sample_rate)
         print(f"  {speaker_name}: {len(clip_paths)} clips -> {out_path}")
 
 

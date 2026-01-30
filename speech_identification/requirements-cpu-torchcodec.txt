@@ -1,0 +1,4 @@
+# Install CPU-only torchcodec to avoid CUDA/libnppicc.so.12 errors.
+# Run after main install: pip install -r requirements-cpu-torchcodec.txt --force-reinstall
+# Uses PyPI only (no cu126 index) so you get the CPU wheel; compatible with torch 2.8.
+torchcodec==0.7.0

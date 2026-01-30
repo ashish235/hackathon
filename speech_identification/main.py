@@ -19,11 +19,28 @@ Improving accuracy (speaker-diarization-community-1):
 
 import argparse
 import os
+import warnings
 from pathlib import Path
+
+# Suppress noisy pyannote/PyTorch warnings (harmless for diarization)
+warnings.filterwarnings(
+    "ignore",
+    message=".*TensorFloat-32.*TF32.*",
+    module="pyannote.audio.utils.reproducibility",
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*degrees of freedom.*",
+    category=UserWarning,
+)
 
 import torch
 from pyannote.audio import Pipeline
 from pyannote.core import Annotation
+
+from audio_io import load_audio
+
+TARGET_SAMPLE_RATE = 16000
 
 
 def get_diarization(prediction):
@@ -79,6 +96,8 @@ def run_diarization(
 
     print(f"Loading pipeline: {pipeline_id}")
     pipeline = Pipeline.from_pretrained(pipeline_id, token=hf_token)
+    if pipeline is None:
+        raise RuntimeError(f"Failed to load pipeline: {pipeline_id}")
 
     # Optional: tune pipeline for better accuracy (community-1 defaults:
     # segmentation.min_duration_off=0.0, clustering.threshold=0.6, Fa=0.07, Fb=0.8)
@@ -99,6 +118,12 @@ def run_diarization(
     pipeline.to(device)
 
     print(f"Diarizing: {audio_path}")
+    # Load with TorchCodec (recommended); pass waveform dict to avoid deprecated torchaudio path in pyannote
+    waveform, sr = load_audio(audio_path, sample_rate=TARGET_SAMPLE_RATE)
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    audio_input = {"waveform": waveform, "sample_rate": sr}
+
     kwargs = {}
     if num_speakers is not None:
         kwargs["num_speakers"] = num_speakers
@@ -107,12 +132,13 @@ def run_diarization(
     if max_speakers is not None:
         kwargs["max_speakers"] = max_speakers
 
-    diarization = pipeline(str(audio_path), **kwargs)
+    diarization = pipeline(audio_input, **kwargs)
     annotation = get_diarization(diarization)
 
     print("\nSpeaker segments:")
     print("-" * 60)
-    for segment, _, speaker in annotation.itertracks(yield_label=True):
+    for item in annotation.itertracks(yield_label=True):
+        segment, speaker = item[0], item[2] if len(item) >= 3 else item[1]
         print(f"  {segment.start:.2f}s - {segment.end:.2f}s  {speaker}")
     print("-" * 60)
 

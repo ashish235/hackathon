@@ -15,7 +15,21 @@ Requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN for pyannote models.
 import argparse
 import shutil
 import sys
+import warnings
 from pathlib import Path
+from typing import Mapping
+
+# Suppress noisy pyannote/PyTorch warnings (harmless for our pipeline)
+warnings.filterwarnings(
+    "ignore",
+    message=".*TensorFloat-32.*TF32.*",
+    module="pyannote.audio.utils.reproducibility",
+)
+warnings.filterwarnings(
+    "ignore",
+    message=".*degrees of freedom.*",
+    category=UserWarning,
+)
 
 # Import from existing modules
 from main import run_diarization
@@ -196,7 +210,7 @@ def _person_name_from_sample_key(sample_key: str) -> str:
 def _rename_ordered_with_speaker_names(
     ordered_dir: Path,
     results: dict[str, tuple[str, float]],
-    meeting_embeddings: dict[str, object],
+    meeting_embeddings: Mapping[str, object],
 ) -> None:
     """Rename files in ordered/ from {index}_{SPEAKER_xx}.wav to {index}-{person_name}.wav (e.g. 0-Aditya.wav)."""
     # Build speaker_id (SPEAKER_00) -> short name (Aditya)

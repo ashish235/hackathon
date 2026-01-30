@@ -11,8 +11,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from pyannote.audio import Audio
 from pyannote.audio.pipelines.speaker_verification import PretrainedSpeakerEmbedding
+
+from audio_io import load_audio
 
 
 # Same embedding as speaker-diarization-community-1
@@ -64,8 +65,7 @@ def compute_embeddings(
         device=device,
         token=hf_token,
     )
-    # Audio at embedding model's sample rate (e.g. 16 kHz)
-    audio_loader = Audio(sample_rate=embedding_model.sample_rate, mono="downmix")
+    target_sr = embedding_model.sample_rate
 
     results = {}
     out_dir = Path(output_dir) if output_dir else input_dir
@@ -73,12 +73,15 @@ def compute_embeddings(
         out_dir.mkdir(parents=True, exist_ok=True)
 
     for path in audio_paths:
-        if not path.suffix.lower() in (".wav", ".mp3", ".flac", ".m4a", ".ogg"):
+        if path.suffix.lower() not in (".wav", ".mp3", ".flac", ".m4a", ".ogg"):
             continue
         name = path.stem
         print(f"  {path.name} ...")
         try:
-            waveform, sr = audio_loader(path)
+            # Load with TorchCodec at model sample rate (avoids deprecated torchaudio path)
+            waveform, sr = load_audio(path, sample_rate=target_sr)
+            if waveform.shape[0] > 1:
+                waveform = waveform.mean(dim=0, keepdim=True)
             # (channels, samples) -> (1, 1, samples)
             w = waveform.unsqueeze(0)
             emb = embedding_model(w)
