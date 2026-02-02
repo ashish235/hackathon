@@ -47,7 +47,7 @@ PROCESSED_DIR = BASE_DIR / "processed"
 FAILED_DIR = BASE_DIR / "failed"
 
 # speech_identification pipeline config
-PIPELINE_SCRIPT = REPO_ROOT / "speech_identification" / "pipeline.py"
+PIPELINE_SCRIPT = REPO_ROOT / ".." / "speech_identification" / "pipeline.py"
 SAMPLE_EMBEDDINGS_DIR = Path("/home/ubuntu/Aditya/PyannoteAudio/sample_embeddings_dir")
 
 # Retry failed: check every RETRY_INTERVAL seconds; retry if file in processed/ has DB status FAILED and is older than RETRY_AFTER_SECONDS
