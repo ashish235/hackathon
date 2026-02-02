@@ -1,0 +1,5 @@
+# Meeting recorder backend — Task 1
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+watchdog>=4.0.0
