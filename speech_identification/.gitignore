@@ -36,3 +36,5 @@ sample_embeddings_dir/
 *.wav
 *.m4a
 *.npy
+
+.env

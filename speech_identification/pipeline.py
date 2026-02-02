@@ -9,7 +9,7 @@ Steps:
 5. Compute embeddings for merged clips
 6. Match each speaker's embedding to sample_embeddings_dir and output the best match
 
-Requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN for pyannote models.
+Requires HF_TOKEN or HUGGINGFACE_HUB_TOKEN for pyannote models (set in .env or environment).
 """
 
 import argparse
@@ -19,6 +19,11 @@ import sys
 import warnings
 from pathlib import Path
 from typing import Mapping
+
+from dotenv import load_dotenv
+
+# Load .env from this package so HF_TOKEN / HUGGINGFACE_HUB_TOKEN are available
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # Suppress noisy pyannote/PyTorch warnings (harmless for our pipeline)
 warnings.filterwarnings(
@@ -208,7 +213,7 @@ def run_pipeline(
         print("=" * 60)
         print(f"  FOLDER={ordered_dir}  OUTPUT={transcript_path}")
         subprocess.run(
-            ["make", "transcribe-local", f"FOLDER={ordered_dir}", f"OUTPUT={transcript_path}"],
+            ["make", "transcribe-local", f"FOLDER={ordered_dir}"],
             cwd=vexa_path,
             check=True,
         )
